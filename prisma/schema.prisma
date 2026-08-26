@@ -1,0 +1,109 @@
+// Titan — loan underwriting platform
+// Data model per design spec §6
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  applicant
+  officer
+}
+
+enum ApplicationStatus {
+  draft
+  processing
+  decided
+  failed
+}
+
+enum DecisionStatus {
+  approved
+  rejected
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  role         Role          @default(applicant)
+  applications Application[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Application {
+  id               String            @id @default(cuid())
+  userId           String            @map("user_id")
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicantName    String            @map("applicant_name")
+  amountRequested  Float             @map("amount_requested")
+  purpose          String
+  income           Float
+  employmentStatus String            @map("employment_status")
+  status           ApplicationStatus @default(draft)
+  documents        Document[]
+  agentResults     AgentResult[]
+  events           Event[]
+  decision         Decision?
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  @@map("applications")
+}
+
+model Document {
+  id            String      @id @default(cuid())
+  applicationId String      @map("application_id")
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  type          String
+  rawText       String      @map("raw_text")
+  extractedJson Json?       @map("extracted_json")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("documents")
+}
+
+model AgentResult {
+  id            String      @id @default(cuid())
+  applicationId String      @map("application_id")
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  agentName     String      @map("agent_name")
+  inputJson     Json        @map("input_json")
+  outputJson    Json        @map("output_json")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("agent_results")
+}
+
+model Decision {
+  id            String         @id @default(cuid())
+  applicationId String         @unique @map("application_id")
+  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status        DecisionStatus
+  loanAmount    Float          @map("loan_amount")
+  interestRate  Float          @map("interest_rate")
+  rationale     String
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  @@map("decisions")
+}
+
+model Event {
+  id            String      @id @default(cuid())
+  applicationId String      @map("application_id")
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  topic         String
+  payload       Json
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("events")
+}
