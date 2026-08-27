@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../middleware/auth";
 import { createLLM } from "../../lib/llm";
+import { scheduleBackground } from "../../lib/background";
 import * as apps from "./applications.service";
 
 const router = Router();
@@ -38,7 +39,9 @@ router.patch("/:id", async (req, res) => {
 });
 
 router.post("/:id/submit", async (req, res) => {
-  const result = await apps.submitApplication(req.user!.sub, req.params.id, llm);
+  const result = await apps.submitApplication(req.user!.sub, req.params.id);
+  // Run the six-agent pipeline in the background; client polls GET /:id.
+  scheduleBackground(() => apps.runApplicationPipeline(result.id, llm));
   res.status(202).json(result);
 });
 

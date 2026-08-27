@@ -1,53 +1,46 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import request from "supertest";
-import { createApp } from "../src/app";
 import { prisma } from "../src/config/db";
+import { MockLLM } from "../src/lib/llm";
+import { runPipeline } from "../src/orchestrator/orchestrator";
 import { resetDb } from "./helpers";
 
-const app = createApp();
+// The orchestrator is tested directly (not through the async HTTP submit) so the
+// pipeline completes deterministically before we assert. MockLLM => zero cost.
+const llm = new MockLLM();
 
-async function createAndSubmit(overrides: Record<string, unknown> = {}) {
-  const reg = await request(app)
-    .post("/auth/register")
-    .send({ email: `u${Math.round(Date.now() % 1e6)}@example.com`, password: "password123" });
-  const token = reg.body.token as string;
-
-  const create = await request(app)
-    .post("/applications")
-    .set("authorization", `Bearer ${token}`)
-    .send({
+async function seedApplication(overrides: Record<string, unknown> = {}) {
+  const user = await prisma.user.create({
+    data: { email: `u${Math.random().toString(36).slice(2)}@ex.com`, passwordHash: "x" },
+  });
+  return prisma.application.create({
+    data: {
+      userId: user.id,
       applicantName: "Jane Doe",
       amountRequested: 20000,
       purpose: "home improvement",
       income: 90000,
       employmentStatus: "employed full-time",
-      documentText: "Jane Doe, employed full-time, 6 years, income 90000.",
+      status: "processing",
+      documents: { create: { type: "application", rawText: "Jane Doe, 6 years, income 90000." } },
       ...overrides,
-    });
-
-  const submit = await request(app)
-    .post(`/applications/${create.body.id}/submit`)
-    .set("authorization", `Bearer ${token}`);
-
-  return { token, id: create.body.id as string, submit };
+    },
+  });
 }
 
 describe("orchestrator (mock LLM)", () => {
   beforeEach(resetDb);
 
   it("runs all six agents end-to-end and produces a decision", async () => {
-    const { token, id, submit } = await createAndSubmit();
-    expect(submit.status).toBe(202);
+    const app = await seedApplication();
+    await runPipeline(app.id, llm);
 
-    const res = await request(app)
-      .get(`/applications/${id}`)
-      .set("authorization", `Bearer ${token}`);
+    const result = await prisma.application.findUnique({
+      where: { id: app.id },
+      include: { agentResults: { orderBy: { createdAt: "asc" } }, decision: true, events: true },
+    });
 
-    expect(res.body.status).toBe("decided");
-
-    // All six agents recorded a result.
-    const agentNames = res.body.agentResults.map((r: { agentName: string }) => r.agentName);
-    expect(agentNames).toEqual([
+    expect(result!.status).toBe("decided");
+    expect(result!.agentResults.map((r) => r.agentName)).toEqual([
       "document",
       "fraud",
       "credit",
@@ -55,34 +48,38 @@ describe("orchestrator (mock LLM)", () => {
       "compliance",
       "decision",
     ]);
+    expect(result!.decision).toBeTruthy();
+    expect(["approved", "rejected"]).toContain(result!.decision!.status);
+    expect(result!.decision!.rationale).toBeTypeOf("string");
 
-    // A decision row exists with a rationale.
-    expect(res.body.decision).toBeTruthy();
-    expect(["approved", "rejected"]).toContain(res.body.decision.status);
-    expect(res.body.decision.rationale).toBeTypeOf("string");
-
-    // Events were emitted (simulated Kafka topics).
-    const topics = res.body.events.map((e: { topic: string }) => e.topic);
+    const topics = result!.events.map((e) => e.topic);
     expect(topics).toContain("credit.analyzed");
     expect(topics).toContain("application.decided");
   });
 
   it("approves a strong applicant", async () => {
-    const { token, id } = await createAndSubmit({
-      amountRequested: 10000,
-      income: 150000,
-      employmentStatus: "employed full-time",
-    });
-    const res = await request(app)
-      .get(`/applications/${id}`)
-      .set("authorization", `Bearer ${token}`);
-    expect(res.body.decision.status).toBe("approved");
-    expect(res.body.decision.loanAmount).toBeGreaterThan(0);
+    const app = await seedApplication({ amountRequested: 10000, income: 150000 });
+    await runPipeline(app.id, llm);
+    const decision = await prisma.decision.findUnique({ where: { applicationId: app.id } });
+    expect(decision!.status).toBe("approved");
+    expect(decision!.loanAmount).toBeGreaterThan(0);
   });
 
-  it("emits one agent_result per agent and no more", async () => {
-    const { id } = await createAndSubmit();
-    const count = await prisma.agentResult.count({ where: { applicationId: id } });
+  it("rejects a weak applicant", async () => {
+    const app = await seedApplication({
+      amountRequested: 200000,
+      income: 18000,
+      employmentStatus: "unemployed",
+    });
+    await runPipeline(app.id, llm);
+    const decision = await prisma.decision.findUnique({ where: { applicationId: app.id } });
+    expect(decision!.status).toBe("rejected");
+  });
+
+  it("writes exactly one agent_result per agent", async () => {
+    const app = await seedApplication();
+    await runPipeline(app.id, llm);
+    const count = await prisma.agentResult.count({ where: { applicationId: app.id } });
     expect(count).toBe(6);
   });
 });

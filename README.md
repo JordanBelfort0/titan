@@ -13,8 +13,12 @@ See the full design in [`docs/superpowers/specs/2026-08-08-titan-underwriting-de
 - Node.js + TypeScript + Express
 - PostgreSQL via Prisma (Neon in production)
 - JWT auth (`jsonwebtoken` + `bcrypt`), Zod validation
-- Pluggable `LLM` interface — `MockLLM` (default, deterministic, zero-cost) or
-  `GeminiLLM`. Swap providers with the `LLM_PROVIDER` env var.
+- **Real AI inference** via Google **Gemini** (`gemini-3.6-flash`), behind a
+  pluggable `LLM` interface. Set `LLM_PROVIDER=mock` for the deterministic,
+  zero-cost `MockLLM` used by the tests.
+- **Async pipeline**: `submit` returns `202` immediately and the six agents run
+  in the background (Vercel `waitUntil`); the client polls for progress.
+- **Web UI** at `/` — submit an application and watch the agents decide live.
 - Deployed on Vercel as a single serverless function
 
 ## Architecture
@@ -94,18 +98,24 @@ curl -s -X POST $BASE/applications/$ID/submit -H "authorization: Bearer $TOKEN"
 curl -s $BASE/applications/$ID -H "authorization: Bearer $TOKEN" | jq
 ```
 
-## Switching to real Gemini
+## Inference & config
 
-Set in the environment:
+Production runs on real Gemini. Environment variables:
 
 ```
-LLM_PROVIDER=gemini
-GEMINI_API_KEY=...
+LLM_PROVIDER=gemini        # or "mock" for deterministic, zero-cost runs
+GEMINI_API_KEY=...         # required when LLM_PROVIDER=gemini
 ```
 
-Each agent already ships a real prompt alongside its mock, so no agent code
-changes. Note: six sequential LLM calls can exceed a serverless request's time
-budget — when enabling Gemini, move the pipeline in `submitApplication` to a
-background job (Vercel Cron/queue) so `submit` still returns `202` immediately.
-See the roadmap in the design spec for the other upgrade paths (real OCR, Kafka,
+The model is `gemini-3.6-flash` (see `src/lib/llm.ts`). Each agent ships a real
+analyst prompt plus a deterministic mock, so switching providers needs no agent
+code changes. Tests always use `MockLLM` (`.env.test`), so they stay fast and
+free.
+
+The full six-agent pipeline takes ~30-45s on real inference. It runs in the
+background via `waitUntil`, so `submit` returns `202` instantly and the UI polls
+`GET /applications/:id` to animate progress. `maxDuration` is raised to 120s in
+`vercel.json` to give the background work headroom.
+
+See the roadmap in the design spec for further upgrades (real OCR, Kafka,
 Temporal, K8s).

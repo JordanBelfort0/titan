@@ -33,14 +33,18 @@ export class MockLLM implements LLM {
 export class GeminiLLM implements LLM {
   private model;
 
-  constructor(apiKey: string, modelName = "gemini-1.5-flash") {
+  constructor(apiKey: string, modelName = "gemini-3.6-flash") {
     const client = new GoogleGenerativeAI(apiKey);
-    this.model = client.getGenerativeModel({ model: modelName });
+    // Force JSON output so we don't have to scrape prose/markdown fences.
+    this.model = client.getGenerativeModel({
+      model: modelName,
+      generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+    });
   }
 
   async generate<T>(req: LlmRequest<T>): Promise<T> {
     const result = await this.model.generateContent(
-      `${req.prompt}\n\nRespond with ONLY valid JSON. No markdown, no prose.`,
+      `${req.prompt}\n\nRespond with ONLY a single JSON object matching the requested fields.`,
     );
     const text = result.response.text();
     const parsed = extractJson(text);

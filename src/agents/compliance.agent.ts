@@ -26,8 +26,20 @@ export const complianceAgent: Agent<ComplianceOutput> = {
 
     return llm.generate({
       schema: complianceSchema,
-      prompt: `Run KYC/AML/sanctions checks and reason about compliance for:
-${JSON.stringify(ctx.application)} with fraud signals ${JSON.stringify(fraud)}`,
+      prompt: `You are a compliance agent running simulated KYC (know-your-customer),
+AML (anti-money-laundering), and sanctions screening. A flagged fraud status or very
+high fraud probability should fail AML / trigger a sanctions hit. A present, plausible
+applicant name passes KYC.
+
+Applicant: ${JSON.stringify(ctx.application)}
+Fraud analysis: ${JSON.stringify(fraud)}
+
+Return a JSON object with:
+- "kyc": one of "pass", "fail"
+- "aml": one of "pass", "fail"
+- "sanctions": one of "clear", "hit"
+- "status": one of "pass", "fail" (fail if any individual check fails)
+- "notes": string — one sentence summary`,
       mock: {
         kyc,
         aml,

@@ -19,8 +19,19 @@ export const documentAgent: Agent<DocumentOutput> = {
 
     return llm.generate({
       schema: documentSchema,
-      prompt: `Extract the applicant's income, employment status, years of experience,
-and a one-line summary from this document:\n\n${text}`,
+      prompt: `You are a loan document-analysis agent. Read the applicant document below
+and extract structured fields. The applicant's stated income is ${ctx.application.income}
+and stated employment is "${ctx.application.employmentStatus}" — use the document to
+confirm or correct these.
+
+Return a JSON object with:
+- "extractedIncome": number — annual income you find in the document (>= 0)
+- "employmentStatus": string — employment status from the document
+- "yearsExperience": number — years of work experience (>= 0)
+- "summary": string — one sentence summarising the applicant
+
+Document:
+${text}`,
       mock: {
         extractedIncome: ctx.application.income,
         employmentStatus: ctx.application.employmentStatus,

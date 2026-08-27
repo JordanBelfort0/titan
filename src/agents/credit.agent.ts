@@ -26,8 +26,16 @@ export const creditAgent: Agent<CreditOutput> = {
 
     return llm.generate({
       schema: creditSchema,
-      prompt: `Estimate a credit score (300-850) and debt-to-income ratio for:
-${JSON.stringify(ctx.application)}`,
+      prompt: `You are a credit-assessment agent. Estimate the applicant's creditworthiness
+from their income, requested amount, purpose, and employment. Higher income and stable
+employment improve the score; a large loan relative to income raises debt-to-income.
+
+Applicant: ${JSON.stringify(ctx.application)}
+
+Return a JSON object with:
+- "creditScore": integer between 300 and 850
+- "debtToIncome": number between 0 and 1 (estimated annual debt service ÷ income)
+- "notes": string — one sentence explaining the assessment`,
       mock: {
         creditScore,
         debtToIncome: Number(debtToIncome.toFixed(2)),

@@ -47,9 +47,21 @@ export const decisionAgent: Agent<DecisionOutput> = {
 
     return llm.generate({
       schema: decisionSchema,
-      prompt: `Make the final loan decision (approved/rejected), loan amount, interest rate,
-and a written rationale. Credit: ${JSON.stringify(credit)}; Risk: ${JSON.stringify(risk)};
-Compliance: ${JSON.stringify(compliance)}; Requested: ${requested}.`,
+      prompt: `You are the final loan-decision agent. Synthesise all prior analyses into an
+underwriting decision. Reject if compliance failed, if risk is high (score > 66), or if
+the credit score is below 600. When approving, set an interest rate that rises with risk
+and, for elevated risk, you may approve a fraction of the requested amount.
+
+Requested amount: ${requested}
+Credit analysis: ${JSON.stringify(credit)}
+Risk analysis: ${JSON.stringify(risk)}
+Compliance analysis: ${JSON.stringify(compliance)}
+
+Return a JSON object with:
+- "status": one of "approved", "rejected"
+- "loanAmount": number — approved amount (0 if rejected)
+- "interestRate": number — annual % rate (0 if rejected)
+- "rationale": string — 1-2 sentences explaining the decision`,
       mock: { status: approved ? "approved" : "rejected", loanAmount, interestRate, rationale },
     });
   },

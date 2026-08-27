@@ -60,22 +60,25 @@ export async function updateApplication(
   return prisma.application.update({ where: { id }, data: patch });
 }
 
-export async function submitApplication(userId: string, id: string, llm: LLM) {
+/**
+ * Mark an application as `processing` and hand back immediately. The caller
+ * (route) schedules {@link runPipeline} in the background so the six-agent
+ * pipeline — which makes several real LLM calls — runs without the client
+ * waiting. The client polls GET /applications/:id to watch progress.
+ */
+export async function submitApplication(userId: string, id: string) {
   const application = await requireOwnedApplication(userId, id);
   if (application.status !== "draft") {
     throw new BadRequestError(`Application is already ${application.status}`);
   }
 
   await prisma.application.update({ where: { id }, data: { status: "processing" } });
+  return { id, status: "processing" as const };
+}
 
-  // Mock pipeline is instant, so we run it inline. When wiring real Gemini,
-  // move this to a background job so submit can return 202 immediately.
+/** Run the pipeline for an application. Called in the background after submit. */
+export async function runApplicationPipeline(id: string, llm: LLM) {
   await runPipeline(id, llm);
-
-  return prisma.application.findUnique({
-    where: { id },
-    select: { id: true, status: true },
-  });
 }
 
 async function requireOwnedApplication(userId: string, id: string) {

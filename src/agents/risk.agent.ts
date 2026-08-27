@@ -39,8 +39,16 @@ export const riskAgent: Agent<RiskOutput> = {
 
     return llm.generate({
       schema: riskSchema,
-      prompt: `Given credit ${JSON.stringify(credit)} and fraud ${JSON.stringify(fraud)},
-produce an overall risk score (0-100), level, and contributing factors.`,
+      prompt: `You are a risk-scoring agent. Combine the credit and fraud analyses into a
+single overall risk score, where 0 is lowest risk and 100 is highest.
+
+Credit analysis: ${JSON.stringify(credit)}
+Fraud analysis: ${JSON.stringify(fraud)}
+
+Return a JSON object with:
+- "riskScore": integer between 0 and 100 (higher = riskier)
+- "level": one of "low", "medium", "high"
+- "factors": array of short strings naming the main contributing factors`,
       mock: { riskScore, level, factors },
     });
   },

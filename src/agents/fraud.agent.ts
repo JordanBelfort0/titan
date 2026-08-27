@@ -31,9 +31,17 @@ export const fraudAgent: Agent<FraudOutput> = {
 
     return llm.generate({
       schema: fraudSchema,
-      prompt: `Assess fraud probability (0-1) and status for this application given
-the document analysis. Application: ${JSON.stringify(ctx.application)}
-Document analysis: ${JSON.stringify(doc)}`,
+      prompt: `You are a fraud-detection agent for loan applications. Compare the applicant's
+stated figures against the document analysis and flag inconsistencies (e.g. income
+mismatch, loan far exceeding income, vague/unverifiable employment).
+
+Applicant: ${JSON.stringify(ctx.application)}
+Document analysis: ${JSON.stringify(doc)}
+
+Return a JSON object with:
+- "fraudProbability": number between 0 and 1
+- "status": one of "clear", "review", "flagged"
+- "signals": array of short strings describing any red flags (empty if none)`,
       mock: { fraudProbability: Number(fraudProbability.toFixed(2)), status, signals },
     });
   },

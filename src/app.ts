@@ -2,21 +2,21 @@ import express from "express";
 import authRoutes from "./modules/auth/auth.routes";
 import applicationRoutes from "./modules/applications/applications.routes";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler";
+import { env } from "./config/env";
+import { page } from "./ui/page";
 
 export function createApp() {
   const app = express();
   app.use(express.json());
 
-  app.get("/", (_req, res) =>
-    res.json({
-      service: "titan",
-      description: "Autonomous loan underwriting platform",
-      health: "/health",
-      endpoints: ["/auth/register", "/auth/login", "/auth/profile", "/applications"],
-    }),
-  );
+  // The web UI.
+  app.get("/", (_req, res) => res.type("html").send(page));
 
-  app.get("/health", (_req, res) => res.json({ status: "ok", service: "titan" }));
+  // Health + which inference engine is actually live (gemini only if keyed).
+  app.get("/health", (_req, res) => {
+    const llm = env.LLM_PROVIDER === "gemini" && env.GEMINI_API_KEY ? "gemini" : "mock";
+    res.json({ status: "ok", service: "titan", llm });
+  });
 
   app.use("/auth", authRoutes);
   app.use("/applications", applicationRoutes);

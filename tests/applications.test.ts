@@ -51,6 +51,26 @@ describe("applications", () => {
     expect(res.status).toBe(400);
   });
 
+  it("submit returns 202 and moves the application to processing", async () => {
+    const token = await authToken("submit@example.com");
+    const create = await request(app)
+      .post("/applications")
+      .set("authorization", `Bearer ${token}`)
+      .send(sampleApplication);
+
+    const submit = await request(app)
+      .post(`/applications/${create.body.id}/submit`)
+      .set("authorization", `Bearer ${token}`);
+    expect(submit.status).toBe(202);
+    expect(submit.body.status).toBe("processing");
+
+    // Re-submitting a non-draft application is rejected.
+    const again = await request(app)
+      .post(`/applications/${create.body.id}/submit`)
+      .set("authorization", `Bearer ${token}`);
+    expect(again.status).toBe(400);
+  });
+
   it("forbids access to another user's application", async () => {
     const tokenA = await authToken("owner@example.com");
     const created = await request(app)
