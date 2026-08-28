@@ -6,3 +6,9 @@ dist/
 .DS_Store
 .vercel
 .env*
+
+# tooling
+.claude/
+.agents/
+.superpowers/
+skills-lock.json
